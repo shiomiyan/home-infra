@@ -6,4 +6,4 @@
 - OS: NixOS
 - Dashboard: Grafana
 - Database: VictoriaMetrics
-- Data source: Switchbot
+- Data source: SwitchBot Meter Plus, Cloudflare speed test

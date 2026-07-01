@@ -1,4 +1,9 @@
-{ config, pkgs, ... }:
+{
+  config,
+  pkgs,
+  inputs,
+  ...
+}:
 
 let
   user = "pi";
@@ -6,6 +11,7 @@ let
 in
 {
   imports = [
+    ../../modules/nixos/cloudflare-speedtest-to-victoriametrics.nix
     ../../modules/nixos/meterplus-to-victoriametrics.nix
     ./grafana.nix
   ];
@@ -85,7 +91,12 @@ in
   time.timeZone = "Asia/Tokyo";
   i18n.defaultLocale = "en_US.UTF-8";
 
-  environment.systemPackages = with pkgs; [ vim ];
+  environment.systemPackages = with pkgs; [
+    vim
+    curl
+    jq
+    inputs.cloudflare-speed-cli.packages.${pkgs.system}.default
+  ];
 
   services.openssh = {
     enable = true;

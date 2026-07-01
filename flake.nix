@@ -16,6 +16,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     flake-utils.url = "github:numtide/flake-utils";
+    cloudflare-speed-cli = {
+      url = "github:kavehtehrani/cloudflare-speed-cli";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     sops-nix = {
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -34,9 +38,15 @@
       };
     in
     blueprintOutputs
+    // inputs.flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (system: {
+      packages.cloudflare-speed-cli = inputs.cloudflare-speed-cli.packages.${system}.default;
+    })
     // {
       nixosConfigurations.rpi4-01 = inputs.nixpkgs.lib.nixosSystem {
         system = "aarch64-linux";
+        specialArgs = {
+          inherit inputs;
+        };
         modules = [
           inputs.sops-nix.nixosModules.sops
           ./nix/hosts/rpi4-01/configuration.nix

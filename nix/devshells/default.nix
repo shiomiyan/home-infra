@@ -38,6 +38,9 @@ pkgs.mkShell {
       go
       gcc
       nixd
+      # Make direnv able to decrypt the checked-in secret source instead of
+      # relying on whatever happens to be installed on the host machine.
+      sops
     ])
     ++ preCommitCheck.enabledPackages;
 

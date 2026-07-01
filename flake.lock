@@ -21,6 +21,26 @@
         "type": "github"
       }
     },
+    "cloudflare-speed-cli": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782400822,
+        "narHash": "sha256-Uge1PqJoaQ7F0bPxDBzF1lSDaGawY2nzuPOmQIj3Xk0=",
+        "owner": "kavehtehrani",
+        "repo": "cloudflare-speed-cli",
+        "rev": "0c6649fc1c1c452698cbef0b6fcb5314dc1cc121",
+        "type": "github"
+      },
+      "original": {
+        "owner": "kavehtehrani",
+        "repo": "cloudflare-speed-cli",
+        "type": "github"
+      }
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -116,6 +136,7 @@
     "root": {
       "inputs": {
         "blueprint": "blueprint",
+        "cloudflare-speed-cli": "cloudflare-speed-cli",
         "flake-utils": "flake-utils",
         "git-hooks": "git-hooks",
         "nixpkgs": "nixpkgs",

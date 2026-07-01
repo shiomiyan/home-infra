@@ -2,7 +2,7 @@
 
 ## 目的
 
-このリポジトリは、SwitchBot Meter Plus の温湿度を定期取得し、VictoriaMetrics に保存するための最小構成の監視パイプラインです。
+このリポジトリは、SwitchBot Meter Plus の温湿度と自宅回線の speed test 結果を定期取得し、VictoriaMetrics に保存するための最小構成の監視パイプラインです。
 
 この構成にしている理由は、Raspberry Pi 上で長期間安定して動かすには、常駐プロセスや中間ストレージを増やさず、1 回ごとの取得処理を小さく閉じたほうが運用コストと故障点を減らせるためです。
 
@@ -15,9 +15,11 @@ architecture-beta
     service timer(logos:systemd-icon)[systemd timer] in host
     service svc(logos:systemd-icon)[systemd service] in host
     service env(logos:linux-tux)[sops-nix env file] in host
-    service cli(logos:go)[meterplus-to-victoriametrics] in host
+    service climate(logos:go)[meterplus-to-victoriametrics] in host
+    service speed(logos:linux-tux)[cloudflare-speedtest-to-victoriametrics] in host
 
     service sb(logos:cloud)[SwitchBot API v1.1]
+    service cf(logos:cloudflare-icon)[Cloudflare Speed Test]
     service vm(logos:victoriametrics-icon)[VictoriaMetrics]
     service gf(logos:grafana)[Grafana]
 
@@ -27,10 +29,13 @@ architecture-beta
     timer:B -- Ticks every minute --> j1
     j1:R -- Starts oneshot job --> svc:L
     env:B -- Supplies runtime secrets and endpoints --> j2
-    j2:R -- Loaded at process start --> cli:L
-    svc:R -- Executes --> cli:L
-    cli:R -- GET device status --> sb:L
-    cli:B -- POST Prometheus text --> vm:T
+    j2:R -- Loaded at process start --> climate:L
+    svc:R -- Executes --> climate:L
+    svc:R -- Executes --> speed:L
+    climate:R -- GET device status --> sb:L
+    speed:R -- Run active test --> cf:L
+    climate:B -- POST Prometheus text --> vm:T
+    speed:B -- POST Prometheus text --> vm:T
     gf:B -- Queries metrics --> vm:R
 ```
 
@@ -51,21 +56,37 @@ architecture-beta
 
 このプロセスを単一責務にしている理由は、取得と保存の経路を短く保ち、障害時の切り分けを簡単にするためです。現状は 1 デバイスの温湿度転送だけに用途を絞っており、汎用的な収集基盤にはしていません。
 
-### 3. SwitchBot API
+### 3. Speed test bash CLI
+
+- `nix/packages/cloudflare-speedtest-to-victoriametrics/default.nix` に埋め込んだ bash script が Cloudflare speed test の結果を VictoriaMetrics に送ります。
+- `nix/modules/nixos/cloudflare-speedtest-to-victoriametrics.nix` が timer/service を定義します。
+- `flake.nix` の input で upstream CLI を固定し、service は `nix run` ではなくそのバイナリを直接実行します。
+
+この経路を bash + oneshot にしている理由は、処理が「1 回測ってそのまま投げる」だけで閉じており、常駐プロセスや中間状態を持ち込む価値がまだないためです。失敗をその回の unit failure に寄せることで、speed test 自体が重い処理でも異常の発見を systemd/journal に集約できます。
+
+### 4. SwitchBot API
 
 - `GET /v1.1/devices/{deviceID}/status` を利用します。
 - 認証ヘッダは token, secret, timestamp, nonce から毎回生成します。
 
 毎回 API から最新値を取得する理由は、ローカル状態を持たずに済み、Pi 側で同期やキャッシュ整合性を考えなくてよいためです。
 
-### 4. VictoriaMetrics
+### 5. Cloudflare Speed Test
+
+- `cloudflare-speed-cli --json --auto-save false` を使います。
+- script は JSON のうち監視に効く主要値だけを Prometheus text format へ変換します。
+- ラベルは `source`, `interface_name`, `is_wireless`, `asn` に絞ります。
+
+主要値だけへ絞る理由は、あとから使わない系列まで保存すると家庭内監視としては複雑さのほうが勝ちやすいためです。位置情報や測定 ID をラベルに含めないのも、高カーディナリティを避けて長期運用を軽くするためです。
+
+### 6. VictoriaMetrics
 
 - Go CLI は Prometheus text format を `POST /api/v1/import/prometheus` に送信します。
 - 保存先を VictoriaMetrics に限定し、別の保存形式への抽象化はしていません。
 
 抽象化を入れていない理由は、このリポジトリの目的が「家庭内メトリクスを VictoriaMetrics に入れること」で明確だからです。保存先を切り替える需要がまだない段階では、汎用化より単純さを優先します。
 
-### 5. Grafana
+### 7. Grafana
 
 - `nix/hosts/rpi4-01/grafana.nix` が `rpi4-01` の Grafana 設定を定義します。
 - dashboard JSON は `nix/hosts/rpi4-01/grafana/dashboards` に置き、host から provision します。
@@ -102,28 +123,30 @@ sequenceDiagram
     participant Service as systemd service
     participant CLI as Go CLI
     participant SB as SwitchBot API
+    participant CF as Cloudflare Speed Test
     participant VM as VictoriaMetrics
 
     Timer->>Service: trigger every minute
-    Service->>CLI: start process
+    Service->>CLI: start climate process
     CLI->>CLI: load env
     CLI->>SB: GET /v1.1/devices/{deviceID}/status
     SB-->>CLI: temperature, humidity
-    CLI->>CLI: build Prometheus payload
     CLI->>VM: POST /api/v1/import/prometheus
     VM-->>CLI: 2xx on success
-    CLI-->>Service: exit 0
+    Service->>CF: start speed test process every 15 minutes
+    CF->>VM: POST /api/v1/import/prometheus
+    VM-->>CF: 2xx on success
 ```
 
 ## 設定
 
-必要な設定は SwitchBot 側の環境変数だけです。
+必要な追加設定はありません。SwitchBot 側だけが環境変数を必要とします。
 
 - `SWITCHBOT_TOKEN`
 - `SWITCHBOT_CLIENT_SECRET`
 - `SWITCHBOT_METERPLUS_DEVICE_ID`
 
-VictoriaMetrics の書き込み先は同一ホスト上のローカルインスタンスに固定しています。送信先を host 設定から切り離す理由は、収集先がそのホスト自身で変わらない以上、secret 配布や runtime 設定に含める必要がないためです。
+VictoriaMetrics の書き込み先は同一ホスト上のローカルインスタンスに固定しています。送信先を host 設定から切り離す理由は、収集先がそのホスト自身で変わらない以上、secret 配布や runtime 設定に含める必要がないためです。speed test 側も同じ方針にしているのは、家庭内の 1 台構成で送信先の抽象化を足すと、監視対象より設定面のほうが複雑になりやすいためです。
 
 ## 設計上の判断
 
@@ -133,7 +156,7 @@ VictoriaMetrics の書き込み先は同一ホスト上のローカルインス�
 
 ### 中間キューやローカル永続化を持たない
 
-取得失敗時はその回を失う設計です。これは、家庭内の温湿度監視では完全配送より構成の単純さのほうが価値が高い、という判断に基づいています。
+取得失敗時はその回を失う設計です。これは、家庭内監視では完全配送より構成の単純さのほうが価値が高い、という判断に基づいています。speed test の失敗も同様に埋め合わせず、その回の失敗として journal と unit status に残します。
 
 ### 1 デバイス専用
 
@@ -142,7 +165,8 @@ VictoriaMetrics の書き込み先は同一ホスト上のローカルインス�
 ## 障害境界
 
 - SwitchBot API 障害時: メトリクスは書き込まれず、プロセスは失敗終了します。
-- VictoriaMetrics 書き込み失敗時: SwitchBot 取得結果は破棄され、プロセスは失敗終了します。
+- VictoriaMetrics 書き込み失敗時: 取得結果は破棄され、プロセスは失敗終了します。
+- Cloudflare speed test 障害時: メトリクスは書き込まれず、speed test の出力を標準エラーに残して失敗終了します。
 - 設定不足時: 起動直後に失敗します。
 
 失敗時に即終了する理由は、不完全な状態でリトライループや代替経路を抱え込むより、systemd と監視側から異常を見つけやすくするためです。
