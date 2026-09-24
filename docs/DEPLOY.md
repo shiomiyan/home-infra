@@ -1,7 +1,7 @@
 `nixos-rebuild`を使って、ホスト端末からraspiをプロビジョニング、デプロイします。
 
 ```
-nixos-rebuild switch --flake "path:$PWD#rpi4-01" --target-host pi@192.168.10.13 --build-host pi@192.168.10.13 --elevate=sudo --ask-elevate-password
+nixos-rebuild switch --flake "path:$PWD#rpi4-01" --target-host pi@192.168.10.15 --build-host pi@192.168.10.15 --elevate=sudo --ask-elevate-password
 ```
 
 ## Credential

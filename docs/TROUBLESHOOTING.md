@@ -10,7 +10,7 @@ ssh-add -L
 `ssh-add -L` と NixOS の authorized key が一致していても、SSH client が別の agent socket を見ていれば `Permission denied (publickey)` になります。まず素の SSH を同じ socket で通し、その後に `nixos-rebuild` へ進めます。
 
 ```
-ssh -vvv -o IdentityAgent="$SSH_AUTH_SOCK" pi@192.168.10.13 true
+ssh -vvv -o IdentityAgent="$SSH_AUTH_SOCK" pi@192.168.10.15 true
 ```
 
 `Offering public key` の行に期待する `ssh-ed25519` が出ない場合は、鍵不一致ではなく client 側の agent 参照がずれています。`nixos-rebuild` も同じ socket に固定します。

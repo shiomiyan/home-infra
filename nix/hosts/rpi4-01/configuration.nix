@@ -59,6 +59,23 @@ in
     options = "--delete-older-than 7d";
   };
 
+  systemd.services.daily-reboot = {
+    description = "Reboot the Raspberry Pi daily";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${pkgs.systemd}/bin/systemctl reboot";
+    };
+  };
+
+  systemd.timers.daily-reboot = {
+    description = "Reboot the Raspberry Pi daily";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar = "*-*-* 04:00:00";
+      Unit = "daily-reboot.service";
+    };
+  };
+
   boot = {
     # kernelPackages = pkgs.linuxKernel.packages.linux_rpi4;
     initrd.availableKernelModules = [
@@ -127,6 +144,10 @@ in
         ];
       }
     ];
+  };
+
+  services.tailscale = {
+    enable = true;
   };
 
   users = {

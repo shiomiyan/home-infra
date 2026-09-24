@@ -1,5 +1,5 @@
 {
-  description = "green";
+  description = "home-infra";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs";

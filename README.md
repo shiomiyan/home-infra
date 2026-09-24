@@ -1,4 +1,4 @@
-# green
+# home-infra
 
 おうち監視システムです。
 
